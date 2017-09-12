@@ -1,0 +1,180 @@
+# specific files #
+############################################
+*.wizard.lock
+
+# project files #
+############################################
+*.iml
+*.exe
+
+
+# certificates and keys and keystores
+#####################################
+*.csr
+*.jks
+*.cnf
+*.p
+*.swp
+*.crt
+*.csr
+*.pem
+*.key
+*.p12
+# certs folder
+certs/
+hypori/
+
+test reports
+############
+newman/
+db/
+hypori/
+output.json
+runsummary.json
+
+# builds #
+##########
+buildid
+
+# Ignored files creating during execution of scripts#
+#####################################################
+=
+result.xml
+nova_ouput.xml
+libvirt_output.xml
+dc_android1.img
+generic_x86.iso
+kernel
+keystonerc_admin
+keystonerc_tenant
+
+*.img
+*.deb
+nohup.out
+*.yaml
+*.out
+*.output
+setup.sh
+docker-volumes
+
+# generated on the fly
+.installed
+
+# finalizing the list of users and avoiding changes
+users.csv
+
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
+*.pyc
+SOURCES.txt
+version.properties
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.img
+*.pruned
+*.7z
+*.dmg
+*.iso
+*.rar
+*.zip
+*.deb
+*.egg
+*.apk
+*.tar.bz2
+*.rpm
+*.tar
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+*.log*
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# Folders #
+###########
+.idea
+.vscode/
+bin
+build
+target
+test-classes
+classes
+dist
+dist_install
+final
+.egg-info
+.gwt
+Servers
+output
+webhelp
+
+gwt-unitCache
+droidcloudmanager
+ui/smartgwt_install/.installed
+
+# kafka that is downloaded temporarily
+kafka_2.9.2-0.8.1.1
+
+# for gwt
+deploy
+
+# Eclipse #
+###########
+*.metadata
+#*.project
+*.iml
+*.settings
+#*.classpath
+*.externalToolBuilders
+
+VisualStudioCode folder
+#######################
+.vscode/*
+
+JEnv . file
+###########
+.java-version
+
+# Maven #
+#########
+RemoteSystemsTempFiles
+
+# JUnit #
+#########
+surefire-reports
+
+# DON'T package up the virtual environment #
+############################################
+.venv
+
+# DON'T package up vagrant folders or vmware virtual machine files #
+####################################################################
+.vagrant
+*.box
+*.vmdk
+*.nvram
+*.vmx
+*.vmxf
+*.vmsd
+
