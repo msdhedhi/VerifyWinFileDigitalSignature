@@ -16,6 +16,8 @@ import java.security.cert.X509Certificate;
 import java.util.Collection;
 import java.util.Iterator;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
@@ -43,6 +45,8 @@ import com.dhedhi.utils.verifywinsign.exceptions.WindowsPEFileFormatException;
 
 public class WinFile {
 
+	private static final Logger logger = LogManager.getRootLogger();
+
 	public static final int iBlockSize = 4096; // how many bytes are we going to read at a time from the input file
 
 	private byte[] computedFileHash = null;  // file hash computed
@@ -57,15 +61,13 @@ public class WinFile {
     private int iPEOffset;
     private long dirSecurityOffset;
     private long coffSymbolTableOffset;
-    
-    private static final boolean DEBUG = true;
-    
+        
     private boolean fileIs64Bit = false;
     
     private boolean dateValidityCheck = true; // check if cert has expired
     private boolean anchorCheck = true;       // check cert against an anchor ( i.e. CA ) cert
     
-    MessageDigest sha1;
+    private MessageDigest sha1;
     
     public WinFile(String sFileName) {
     	
@@ -148,9 +150,7 @@ public class WinFile {
 			{
 				throw new WindowsPEFileFormatException("dirSecuritySize is invalid.");
 			}		
-			
-		    //System.out.println( "dirSecuritySize length: " + dirSecuritySize);
-	
+				
 			// Now skip to the part where we have the certificate....
 			
 			long iOffset = dirSecurityOffset + 8; // we need to read this many characters
@@ -227,9 +227,7 @@ public class WinFile {
 		    DEROctetString seq2 =  (DEROctetString)seq1.getObjectAt(1);
 		    
 		    storedFileHash = seq2.getOctets(); // this is the file hash as stored in the signer info of the EXE file
-			if( DEBUG ) {
-				System.out.println( "File hashes stored in PKCS7 cert: " + String.valueOf(convertBytesToHex(storedFileHash)));
-			}
+			logger.info( "File hash stored in PKCS7 cert: " + String.valueOf(convertBytesToHex(storedFileHash)));
 			
 			
 			
@@ -311,9 +309,7 @@ public class WinFile {
 			
 			computedFileHash = md.digest();
 			
-			if( DEBUG ) {
-				System.out.println("Computed FileHash: " + String.valueOf(convertBytesToHex(computedFileHash)) ) ;
-			}
+			logger.info("Computed FileHash: " + String.valueOf(convertBytesToHex(computedFileHash)) ) ;
 			
 		} finally {
 			input.close();
@@ -329,24 +325,18 @@ public class WinFile {
 			return false;
 		}
 		if( storedFileHash.length != computedFileHash.length ) {
-			if( DEBUG ) {
-				System.out.println("File hashes length do not match.");
-			}
+			logger.error("File hashes length do not match.");
 			return false;
 		}
 		
 		for( int i = 0; i < storedFileHash.length; i++ ) {
 			if( storedFileHash[i] != computedFileHash[i] ) {
-				if( DEBUG ) {
-					System.out.println("File hashes do not match.");
-				}
+				logger.error("File hashes do not match.");
 				return false;
 			}
 		}
 		
-		if( DEBUG ) {
-			System.out.println( "File hashes match. File has not been modified.");
-		}
+		logger.info("File hashes match. File has not been modified.");
 		
 		
 		// Now verify the validity of the signing certificate
@@ -364,24 +354,18 @@ public class WinFile {
 			X509CertificateHolder cert = (X509CertificateHolder)certIt.next();
 
 			if (signer.verify(new JcaSimpleSignerInfoVerifierBuilder().setProvider("BC").build(cert)) == false) {
-				if( DEBUG ) {
-					System.out.println( "Certificate " + cert.getSubject().toString() +" is not valid.");
-				}
+				logger.error("Certificate " + cert.getSubject().toString() +" is not valid.");
 				isValid = false;
 				return false;
 			} else {
-				if( DEBUG ) {
-					System.out.println( "Certificate " + cert.getSubject().toString() +" is valid with issuer: " + cert.getIssuer().toString());
-				}
+				logger.info("Certificate " + cert.getSubject().toString() +" is valid with issuer: " + cert.getIssuer().toString());
 			}
 			
 			if( dateValidityCheck == true ) {
 				// Check for Expiry
 				boolean notExpired = cert.isValidOn(new java.util.Date() );
 				if( notExpired == false ) {
-					if( DEBUG ) {
-						System.out.println( "Certificate " + cert.getSubject().toString() +" is no longer valid.");
-					}
+					logger.error("Certificate " + cert.getSubject().toString() +" is no longer valid.");
 					isValid = false;
 					return false;
 				}
@@ -395,9 +379,7 @@ public class WinFile {
 				sha1.update(cert.getSubject().getEncoded());
 				String sIssuerHash = String.valueOf(convertBytesToHex(sha1.digest()));
 				sIssuerHash = sIssuerHash.substring(0,8);
-				if( DEBUG ) {
-					System.out.println( "Looking for a issuer with hash: " + sIssuerHash + " in folder: " + caStore);
-				}
+				logger.info("Looking for a issuer with hash: " + sIssuerHash + " in folder: " + caStore);
 				// Now load the anchor cert
 				InputStream in = null;
 				X509Certificate anchorCert = null;
@@ -416,9 +398,7 @@ public class WinFile {
 				try {
 					myCert.verify( anchorCert.getPublicKey() ); // verify it was signed using anchor cert's public key
 				} catch( Exception e ) { 
-					if( DEBUG ) {
-						System.out.println( "Signing certificate is not trusted");
-					}
+					logger.error("Signing certificate is not trusted");
 					isValid = false;
 					return false;
 				}
@@ -429,15 +409,11 @@ public class WinFile {
 		}
 		
 		if( isValid == false ) {
-			if( DEBUG ) {
-				System.out.println( "Unable to validate the PKCS7 certificate.");
-			}
+			logger.error("Unable to validate the PKCS7 certificate.");
 			return false;
 		}
 		
-		if( DEBUG ) {
-			System.out.println( "PKCS7 certificate is valid");
-		}
+		logger.info( "PKCS7 certificate is valid");
 		
 		return true;
 	}
