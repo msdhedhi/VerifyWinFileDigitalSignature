@@ -10,6 +10,7 @@ import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
+import java.security.Security;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -44,6 +45,10 @@ import com.dhedhi.utils.verifywinsign.exceptions.WindowsPEFileFormatException;
  */
 
 public class WinFile {
+
+    static {
+        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+    }
 
     private static final Logger logger = LogManager.getRootLogger();
 
@@ -162,39 +167,28 @@ public class WinFile {
                 throw new WindowsPEFileFormatException("dirSecuritySize is invalid.");
             }
 
-            // Now skip to the part where we have the certificate....
+            // Now skip to the part where we have the file security info in the file i.e. the certificate etc
+            long bytesToRead = ( dirSecurityOffset + 8 ) - iBytesRead;
+            long blocks = (bytesToRead >> 12);  // or in other words ( bytesToRead / 4096 )
+            int remainder = (int) (bytesToRead - (blocks << 12));  // bytes that reamin after we have read "blocks" of 4096 bytes
 
-            long iOffset = dirSecurityOffset + 8; // we need to read this many
-                                                  // characters
-            iOffset = iOffset - iBytesRead; // we have already read 4096
-                                            // characters
-            // System.out.println( "iOffset: " + iOffset + " dirSecurityOffset:
-            // " + dirSecurityOffset + " dirSecuritySize: " + dirSecuritySize);
-
-            while (iOffset > 0) // move file pointer towards the location where
-                                // the security stuff starts
-            {
-                if (input.read() < 0) {
-                    // this should never happen :)
-                    System.out.println("Read -1 while moving file pointer");
-                    break;
-                }
-                iOffset = iOffset - 1;
+            while (blocks-- > 0) {
+                iBytesRead = input.read(fileBlock, 0, iBlockSize);
             }
+
+            if (remainder > 0) {
+                iBytesRead = input.read(fileBlock, 0, remainder);
+            }
+            
             fileSecurityInfo = new byte[(int) (dirSecuritySize - 8)];
-
-            for (int i = 0; i < fileSecurityInfo.length; i++) {
-                fileSecurityInfo[i] = 0;
-            }
 
             // file pointer is now pointing to the place where we should now
             // start reading the signer information
             // This should be a PKCS7 structure
-            iOffset = dirSecuritySize - 8;
-
-            while (iOffset > 0) {
-                fileSecurityInfo[(int) (fileSecurityInfo.length - iOffset)] = (byte) input.read();
-                iOffset = iOffset - 1;
+            iBytesRead = input.read(fileSecurityInfo, 0, (int)(dirSecuritySize - 8));
+            
+            if( iBytesRead != dirSecuritySize - 8 ) {
+                throw new WindowsPEFileFormatException("Unable to read file security info.");
             }
 
         } finally {
@@ -298,30 +292,21 @@ public class WinFile {
 
             md.update(fileBlock, pe, iBytesRead - pe); // 92 to 152 + extraBytes
 
-            // We now need to read until the dirSecurityOffset and hash bytes
-            // until that
-
+            // We now need to read until the dirSecurityOffset and hash bytes until that point
             long bytesToRead = dirSecurityOffset - iBytesRead;
-            long blocks = (bytesToRead >> 12);
+            long blocks = (bytesToRead >> 12);  // or in other words bytesToRead / 4096
             int remainder = (int) (bytesToRead - (blocks << 12));
             if (remainder == 0) {
                 blocks--;
                 remainder = iBlockSize;
             }
 
-            // System.out.println( "Blocks to read: " + blocks);
-
             while (blocks-- > 0) {
                 iBytesRead = input.read(fileBlock, 0, iBlockSize);
                 md.update(fileBlock, 0, iBytesRead);
             }
 
-            if (remainder > 0) {
-                iBytesRead = input.read(fileBlock, 0, remainder);
-                md.update(fileBlock, 0, remainder);
-            }
-
-            computedFileHash = md.digest();
+            computedFileHash = md.digest(); // compute the hash of the file using the "digestAlgorithm" found earlier
 
             logger.info("Computed FileHash: " + String.valueOf(convertBytesToHex(computedFileHash)));
 

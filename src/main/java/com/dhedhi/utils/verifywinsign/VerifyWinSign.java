@@ -12,7 +12,6 @@ public class VerifyWinSign {
 
 	public boolean verify(String sFileName, String caStore) throws IOException, FileNotFoundException, CMSException, CertificateException, OperatorCreationException {
 
-        Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
         
 		WinFile winFile = new WinFile(sFileName);
 		//winFile.setAnchorCheck( false );
