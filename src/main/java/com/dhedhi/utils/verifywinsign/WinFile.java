@@ -12,10 +12,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.Security;
 import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.Map;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -68,7 +68,7 @@ public class WinFile {
 
     private int iPEOffset;
     private long dirSecurityOffset;
-    private long coffSymbolTableOffset;
+    //private long coffSymbolTableOffset;
 
     private boolean fileIs64Bit = false;
 
@@ -156,8 +156,8 @@ public class WinFile {
             long dirSecuritySize = ConvertToUint32(fileBlock[iPEOffset + extraBytes + 156 + 3],
                     fileBlock[iPEOffset + extraBytes + 156 + 2], fileBlock[iPEOffset + extraBytes + 156 + 1],
                     fileBlock[iPEOffset + extraBytes + 156]);
-            coffSymbolTableOffset = ConvertToUint32(fileBlock[iPEOffset + 12 + 3], fileBlock[iPEOffset + 12 + 2],
-                    fileBlock[iPEOffset + 12 + 1], fileBlock[iPEOffset + 12]);
+            //coffSymbolTableOffset = ConvertToUint32(fileBlock[iPEOffset + 12 + 3], fileBlock[iPEOffset + 12 + 2],
+            //        fileBlock[iPEOffset + 12 + 1], fileBlock[iPEOffset + 12]);
 
             // System.out.println( "dirSecurityOffset: " +
             // Long.toHexString(dirSecurityOffset) + " coffSymbolTableOffset: "
@@ -170,8 +170,8 @@ public class WinFile {
             // Now skip to the part where we have the file security info in the file i.e. the certificate etc
             long bytesToRead = ( dirSecurityOffset + 8 ) - iBytesRead;
             long blocks = (bytesToRead >> 12);  // or in other words ( bytesToRead / 4096 )
-            int remainder = (int) (bytesToRead - (blocks << 12));  // bytes that reamin after we have read "blocks" of 4096 bytes
-
+            int remainder = (int) (bytesToRead - (blocks << 12));  // bytes that remain after we have read "blocks" of 4096 bytes
+            
             while (blocks-- > 0) {
                 iBytesRead = input.read(fileBlock, 0, iBlockSize);
             }
@@ -296,14 +296,15 @@ public class WinFile {
             long bytesToRead = dirSecurityOffset - iBytesRead;
             long blocks = (bytesToRead >> 12);  // or in other words bytesToRead / 4096
             int remainder = (int) (bytesToRead - (blocks << 12));
-            if (remainder == 0) {
-                blocks--;
-                remainder = iBlockSize;
-            }
 
             while (blocks-- > 0) {
                 iBytesRead = input.read(fileBlock, 0, iBlockSize);
                 md.update(fileBlock, 0, iBytesRead);
+            }
+            
+            if( remainder > 0 ) {
+                iBytesRead = input.read(fileBlock, 0, remainder);
+                md.update(fileBlock, 0, remainder );
             }
 
             computedFileHash = md.digest(); // compute the hash of the file using the "digestAlgorithm" found earlier
@@ -315,7 +316,7 @@ public class WinFile {
         }
     }
 
-    public boolean verify(String caStore)
+    public boolean verify(Map<String,X509Certificate> caStoreHashMap)
             throws IOException, CMSException, CertificateException, OperatorCreationException {
 
         // first make sure the file hash matches the stored file hash
@@ -380,30 +381,24 @@ public class WinFile {
                 // First get the issuer's hash. We will then attempt to lookup
                 // the issuer in our CA stor
                 sha1.reset();
-                sha1.update(cert.getSubject().getEncoded());
+                sha1.update(cert.getIssuer().getEncoded());
                 String sIssuerHash = String.valueOf(convertBytesToHex(sha1.digest()));
-                sIssuerHash = sIssuerHash.substring(0, 8);
-                logger.info("Looking for a issuer with hash: " + sIssuerHash + " in folder: " + caStore);
-                // Now load the anchor cert
-                InputStream in = null;
-                X509Certificate anchorCert = null;
-                try {
-                    in = new FileInputStream(caStore + "/" + sIssuerHash);
-                    CertificateFactory factory = CertificateFactory.getInstance("X.509");
-                    anchorCert = (X509Certificate) factory.generateCertificate(in);
-                } finally {
-                    if (in != null) {
-                        in.close();
-                    }
+                if( caStoreHashMap.containsKey( sIssuerHash ) == false ) {
+                    throw new WindowsPEFileFormatException( "Certificate with isuser hash: " + sIssuerHash + " and subject: " + cert.getIssuer().toString() + " was not found in CA store.");
                 }
+                
+                X509Certificate trustAnchor = caStoreHashMap.get(sIssuerHash);
 
                 // Now verify against the anchor cert
-                X509Certificate myCert = new JcaX509CertificateConverter().setProvider("BC").getCertificate(cert);
+                X509Certificate peCert = new JcaX509CertificateConverter().setProvider("BC").getCertificate(cert);
                 try {
-                    myCert.verify(anchorCert.getPublicKey()); // verify it was
+                    peCert.verify(trustAnchor.getPublicKey()); // verify it was
                                                               // signed using
                                                               // anchor cert's
                                                               // public key
+                    
+                    logger.info( "PE file certificate verified using CA: " + trustAnchor.getSubjectDN().getName());
+                    
                 } catch (Exception e) {
                     logger.error("Signing certificate is not trusted");
                     isValid = false;
@@ -442,7 +437,7 @@ public class WinFile {
 
     private static char hex[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F' };
 
-    private char[] convertBytesToHex(byte[] bytes) {
+    public static char[] convertBytesToHex(byte[] bytes) {
         char buf[] = new char[bytes.length * 2];
         int index = 0;
         for (byte b : bytes) {

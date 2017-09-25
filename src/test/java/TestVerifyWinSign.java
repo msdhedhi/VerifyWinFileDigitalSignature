@@ -28,49 +28,48 @@ public class TestVerifyWinSign {
     @Test
     public void TestExeGood() throws IOException {
     	VerifyWinSign verifyWinSign = new VerifyWinSign();
-    	
+    	verifyWinSign.loadCAStore( caStore );
 		boolean result = false;
 		try {
 			
-			result = verifyWinSign.verify( resourcesFolder + "/chrome.exe", caStore);
+			result = verifyWinSign.verify( resourcesFolder + "/chrome.exe");
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		assert( result == true );
+		org.junit.Assert.assertEquals( result, true );
     }
 
     // This test is testing a file openssl.exe which is signed by VMWare with a cert that has now expired
     @Test
     public void TestExeExpired() throws IOException {
     	VerifyWinSign verifyWinSign = new VerifyWinSign();
-    	
+        verifyWinSign.loadCAStore( caStore );
+
 		boolean result = false;
 		try {
 			
-			result = verifyWinSign.verify( resourcesFolder + "/openssl.exe", caStore);
+			result = verifyWinSign.verify( resourcesFolder + "/openssl.exe");
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
-		assert( result == false );
-		
+        org.junit.Assert.assertEquals( result, false );
     }
     // This should throw an exception since text files do not have signatures
     @Test
     public void TestTextFile() throws IOException {
     	
     	VerifyWinSign verifyWinSign = new VerifyWinSign();
-    	
+        verifyWinSign.loadCAStore( caStore );
+
     	try {
-			verifyWinSign.verify( resourcesFolder + "/somefile.txt", caStore);
+			verifyWinSign.verify( resourcesFolder + "/somefile.txt");
     		fail( "Text files do not have signatures." );
     	} catch( Exception e ) {
     		// pass
     		LOGGER.info( e.getMessage() );
     	}
-
     }
     
     // This should throw an exception since this file does not have signature
@@ -78,9 +77,10 @@ public class TestVerifyWinSign {
     public void TestExeFileWithoutSignature() throws IOException {
     	
     	VerifyWinSign verifyWinSign = new VerifyWinSign();
-    	
+        verifyWinSign.loadCAStore( caStore );
+
     	try {
-			verifyWinSign.verify( resourcesFolder + "/xcopy.exe", caStore);
+			verifyWinSign.verify( resourcesFolder + "/xcopy.exe");
     		fail( "xcopy.exe does not have a digital signature." );
     	} catch( Exception e ) {
     		// pass
