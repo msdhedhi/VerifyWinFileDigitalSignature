@@ -392,18 +392,15 @@ public class WinFile {
                 // Now verify against the anchor cert
                 X509Certificate peCert = new JcaX509CertificateConverter().setProvider("BC").getCertificate(cert);
                 try {
-                    peCert.verify(trustAnchor.getPublicKey()); // verify it was
-                                                              // signed using
-                                                              // anchor cert's
-                                                              // public key
-                    
+                    peCert.verify(trustAnchor.getPublicKey()); // verify certificate was issued ( i.e. signed ) using anchor cert's public key
                     logger.info( "PE file certificate verified using CA: " + trustAnchor.getSubjectDN().getName());
-                    
                 } catch (Exception e) {
                     logger.error("Signing certificate is not trusted");
                     isValid = false;
                     return false;
                 }
+            } else {
+                logger.warn( "You are trusting all certificates. Make sure you are NOT running in production.");
             }
 
             // if all checks passed then assume cert is valid.
