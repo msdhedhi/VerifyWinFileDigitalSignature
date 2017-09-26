@@ -56,6 +56,12 @@ public class WinFile {
                                                // read at a time from the input
                                                // file
 
+    // The size of the file header.
+    // This is not actually the size of the file's PE header.
+    // It is the location of the pointer where we find the security info offset and security info size
+    private int iFileHeader = 0; 
+                                  
+    
     private byte[] computedFileHash = null; // file hash computed
 
     private byte[] storedFileHash = null; // file hash as stored in the windows
@@ -92,7 +98,7 @@ public class WinFile {
 
         byte[] fileBlock = new byte[iBlockSize];
         byte[] fileSecurityInfo = null;
-
+        
         File file = new File(sFileName);
 
         if (file.exists() == false) {
@@ -103,10 +109,14 @@ public class WinFile {
 
         try {
             input = new BufferedInputStream(new FileInputStream(file));
-            int iBytesRead = input.read(fileBlock, 0, iBlockSize);
-            if (iBytesRead != iBlockSize) {
-                throw new WindowsPEFileFormatException("Unable to read file block of size 4096");
+            
+            // read the first 62 bytes. This will tell us the file type and the PEOffset.
+            int iBytesRead = input.read(fileBlock, 0, 62); // read the first 62 bytes
+            iFileHeader = 0;
+            if (iBytesRead != 62) {
+                throw new WindowsPEFileFormatException("Unable to read file block of size 62");
             }
+            iFileHeader +=  62;
 
             if (fileBlock[0] == 0x4D && fileBlock[1] == 0x53 && fileBlock[2] == 0x43 && fileBlock[3] == 0x46) {
                 throw new WindowsPEFileFormatException("Cab files are not supported");
@@ -118,57 +128,87 @@ public class WinFile {
             }
 
             iPEOffset = ConvertToUint16(fileBlock[61], fileBlock[60]);
-            // System.out.println( "iPEOffset : " +
-            // Integer.toHexString(iPEOffset) + " " + fileBlock[60] + " " +
-            // fileBlock[61]);
-
-            if ((iPEOffset + 160) >= iBlockSize) {
-                throw new WindowsPEFileFormatException("PE Offset is out of range");
+            
+            // Once we have the iPEOffset, we move the file pointer to that offset. This should not be too far away.
+            while( iBytesRead != ( iPEOffset) ) {
+                if( input.read() >= 0 ) {
+                    iBytesRead++;
+                    iFileHeader++;
+                } else {
+                    break;
+                }
             }
-
-            // check if valid windows NT file format
-            // check for PE offset 0x50 = 'P' 0x45 = 'E'
-            if (fileBlock[iPEOffset] != 0x50 || fileBlock[iPEOffset + 1] != 0x45) {
+            
+            if( iBytesRead != iPEOffset ) {
+                throw new WindowsPEFileFormatException("Unable to move file pointer to PEOffset. File is invalid.");
+            }
+            
+            logger.debug( "PEOffset: " + Integer.toHexString(iFileHeader) );
+            
+            // The file pointer now points to the location of iPEOffset
+            // check if valid windows NT file format by reading 2 bytes. These should be "PE".
+            fileBlock[0] = (byte)input.read();
+            fileBlock[1] = (byte)input.read();
+            iFileHeader += 2;
+            if (fileBlock[0] != 0x50 || fileBlock[1] != 0x45) {
                 throw new WindowsPEFileFormatException("PE Offset is invalid.");
             }
+            
+            // skip 22 bytes
+            int iBytesToSkip = 22;
+            while( iBytesToSkip > 0 ) {
+                input.read();
+                iBytesToSkip--;
+            }
+            iFileHeader += 22;
 
-            // find binary type
-            int binaryType = ConvertToUint16(fileBlock[iPEOffset + 4 + 20 + 1], fileBlock[iPEOffset + 20 + 4]);
-            // System.out.println( "Binary Type: " +
-            // Integer.toHexString(binaryType) );
-            // For 64 bit exe, we need to skip some more to get the security
-            // offset.
-            int extraBytes = 0;
+            // find binary type i.e. whether file is 32 bit or 64 bit.
+            fileBlock[0] = (byte)input.read();
+            fileBlock[1] = (byte)input.read();
+            iFileHeader += 2;
+            int binaryType = ConvertToUint16(fileBlock[1], fileBlock[0]);
+            // For 64 bit, we need to skip some more bytes to get the security offset.
             if (binaryType == 0x20b) {
-                // extraBytes = 16;
                 fileIs64Bit = true;
-                extraBytes = 16;
-                // throw new WindowsPEFileFormatException("64 bit binaries are
-                // currently not supported.");
+                logger.debug( "File is 64 bit");
+                // skip 16 extra bytes if we detect 64 bit
+                iBytesToSkip = 16;
+                while( iBytesToSkip > 0 ) {
+                    input.read();
+                    iBytesToSkip--;
+                }
+                iFileHeader += 16;
             }
 
-            // System.out.println( "iPEOffset : " +
-            // Integer.toHexString(iPEOffset) );
+            // skip 126 more bytes
+            iBytesToSkip = 126;
+            while( iBytesToSkip > 0 ) {
+                input.read();
+                iBytesToSkip--;
+            } 
+            iFileHeader += 126;
+            
 
-            dirSecurityOffset = ConvertToUint32(fileBlock[iPEOffset + extraBytes + 152 + 3],
-                    fileBlock[iPEOffset + extraBytes + 152 + 2], fileBlock[iPEOffset + extraBytes + 152 + 1],
-                    fileBlock[iPEOffset + extraBytes + 152]);
-            long dirSecuritySize = ConvertToUint32(fileBlock[iPEOffset + extraBytes + 156 + 3],
-                    fileBlock[iPEOffset + extraBytes + 156 + 2], fileBlock[iPEOffset + extraBytes + 156 + 1],
-                    fileBlock[iPEOffset + extraBytes + 156]);
-            //coffSymbolTableOffset = ConvertToUint32(fileBlock[iPEOffset + 12 + 3], fileBlock[iPEOffset + 12 + 2],
-            //        fileBlock[iPEOffset + 12 + 1], fileBlock[iPEOffset + 12]);
-
-            // System.out.println( "dirSecurityOffset: " +
-            // Long.toHexString(dirSecurityOffset) + " coffSymbolTableOffset: "
-            // + coffSymbolTableOffset );
-
+            // The file pointer is now at the point which will give us the offset to the location where the 
+            // security information is present in the file. The security info will contain a PKCS7 structure
+            iBytesRead = input.read(fileBlock, 0, 8); // read 8 bytes
+            if (iBytesRead != 8) {
+                throw new WindowsPEFileFormatException("Unable to read file block of size 8");
+            }
+            iFileHeader += 8;
+            
+            dirSecurityOffset = ConvertToUint32(fileBlock[3], fileBlock[2], fileBlock[1], fileBlock[0]);
+            long dirSecuritySize = ConvertToUint32(fileBlock[7], fileBlock[6], fileBlock[5], fileBlock[4]);
+            logger.debug( "Security Offset: " + Long.toHexString(dirSecurityOffset) );
+            logger.debug( "Security Info Size: " + Long.toHexString(dirSecuritySize) );
+            
             if (dirSecuritySize <= 8) {
                 throw new WindowsPEFileFormatException("dirSecuritySize is invalid.");
             }
 
             // Now skip to the part where we have the file security info in the file i.e. the certificate etc
-            long bytesToRead = ( dirSecurityOffset + 8 ) - iBytesRead;
+            // We will do this in blocks of 4096 and then read the remainder.
+            long bytesToRead = ( dirSecurityOffset + 8 ) - iFileHeader;
             long blocks = (bytesToRead >> 12);  // or in other words ( bytesToRead / 4096 )
             int remainder = (int) (bytesToRead - (blocks << 12));  // bytes that remain after we have read "blocks" of 4096 bytes
             
@@ -183,8 +223,7 @@ public class WinFile {
             fileSecurityInfo = new byte[(int) (dirSecuritySize - 8)];
 
             // file pointer is now pointing to the place where we should now
-            // start reading the signer information
-            // This should be a PKCS7 structure
+            // start reading the signer information. This should be a PKCS7 structure
             iBytesRead = input.read(fileSecurityInfo, 0, (int)(dirSecuritySize - 8));
             
             if( iBytesRead != dirSecuritySize - 8 ) {
@@ -197,9 +236,8 @@ public class WinFile {
             }
         }
 
-        // We now have the security info.
-        // Attempt to load it in the ASN1Object structure
-        // If this fails then we do not have a valid signature
+        // We now have the security info. Attempt to load it in the ASN1Object structure
+        // If this fails then we do not have a valid signature....
         ASN1InputStream ais = null;
         ASN1Object asn1 = null;
 
@@ -235,9 +273,10 @@ public class WinFile {
             DERSequence seq1 = (DERSequence) seq.getObjectAt(1);
             DEROctetString seq2 = (DEROctetString) seq1.getObjectAt(1);
 
-            storedFileHash = seq2.getOctets(); // this is the file hash as
-                                               // stored in the signer info of
-                                               // the EXE file
+            // This is the file hash as stored in the signer info of the EXE file.
+            // We will verify this later by computing the actual hash of the file and making sure
+            // it is still the same.
+            storedFileHash = seq2.getOctets(); 
             logger.info("File hash stored in PKCS7 cert: " + String.valueOf(convertBytesToHex(storedFileHash)));
 
         } finally {
@@ -276,24 +315,26 @@ public class WinFile {
         }
 
         try {
+            byte[] fileHeader = new byte[iFileHeader];
             input = new BufferedInputStream(new FileInputStream(file));
-            int iBytesRead = input.read(fileBlock, 0, iBlockSize);
+            int iBytesRead = input.read(fileHeader, 0, iFileHeader);
 
             int pe = iPEOffset + 88;
 
-            md.update(fileBlock, 0, pe); // 0 to 88
+            md.update(fileHeader, 0, pe); // 0 to 88
 
             // then skip 4 for checksum
             pe += 4;
 
-            md.update(fileBlock, pe, 60 + extraBytes); // 92 to 152 + extraBytes
+            md.update(fileHeader, pe, 60 + extraBytes); // 92 to 152 + extraBytes
 
             pe += (68 + extraBytes);
 
-            md.update(fileBlock, pe, iBytesRead - pe); // 92 to 152 + extraBytes
-
+            md.update(fileHeader, pe, iBytesRead - pe); // 92 to 152 + extraBytes
+            fileHeader = null;
+            
             // We now need to read until the dirSecurityOffset and hash bytes until that point
-            long bytesToRead = dirSecurityOffset - iBytesRead;
+            long bytesToRead = dirSecurityOffset - iFileHeader;
             long blocks = (bytesToRead >> 12);  // or in other words bytesToRead / 4096
             int remainder = (int) (bytesToRead - (blocks << 12));
 
@@ -358,12 +399,11 @@ public class WinFile {
             X509CertificateHolder cert = (X509CertificateHolder) certIt.next();
 
             if (signer.verify(new JcaSimpleSignerInfoVerifierBuilder().setProvider("BC").build(cert)) == false) {
-                logger.error("Certificate " + cert.getSubject().toString() + " is not valid.");
+                logger.error("Signer info is in valid when checked against certificate " + cert.getSubject().toString());
                 isValid = false;
                 return false;
             } else {
-                logger.info("Certificate " + cert.getSubject().toString() + " is valid with issuer: "
-                        + cert.getIssuer().toString());
+                logger.info("Signer info is valid using certificate " + cert.getSubject().toString());
             }
 
             if (dateValidityCheck == true) {
