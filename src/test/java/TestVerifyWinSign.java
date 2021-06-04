@@ -24,7 +24,7 @@ public class TestVerifyWinSign {
         LOGGER = LogManager.getLogger();
     }
 	
-    // This test is testing a file openssl.exe which is signed by VMWare
+    // This test is testing a file chrome.exe which is signed by Google
     @Test
     public void TestExeGood() throws IOException {
     	VerifyWinSign verifyWinSign = new VerifyWinSign();
@@ -38,6 +38,22 @@ public class TestVerifyWinSign {
 			e.printStackTrace();
 		}
 		org.junit.Assert.assertEquals( result, true );
+    }
+
+    @Test
+    public void TestAtlasianExe() throws IOException {
+        VerifyWinSign verifyWinSign = new VerifyWinSign();
+        verifyWinSign.loadCAStore( caStore );
+
+        boolean result = false;
+        try {
+            
+            result = verifyWinSign.verify( resourcesFolder + "/atlassian-confluence-7.12.2-x64.exe");
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+        org.junit.Assert.assertEquals( result, true );
     }
 
     // This test is testing a file openssl.exe which is signed by VMWare with a cert that has now expired

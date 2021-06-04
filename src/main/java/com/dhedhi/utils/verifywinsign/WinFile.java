@@ -19,17 +19,20 @@ import java.util.Map;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.bouncycastle.asn1.ASN1Encodable;
 import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1Object;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.DEROctetString;
-import org.bouncycastle.asn1.DERSequence;
+import org.bouncycastle.asn1.DLSequence;
 import org.bouncycastle.asn1.pkcs.ContentInfo;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cms.CMSException;
 import org.bouncycastle.cms.CMSSignedData;
+import org.bouncycastle.cms.PKCS7ProcessableObject;
 import org.bouncycastle.cms.SignerInformation;
 import org.bouncycastle.cms.SignerInformationStore;
 import org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder;
@@ -268,15 +271,16 @@ public class WinFile {
             }
 
             digestAlgorithm = signature.getDigestAlgorithmIDs().iterator().next().getAlgorithm().toString();
-
-            DERSequence seq = (DERSequence) signature.getSignedContent().getContent();
-            DERSequence seq1 = (DERSequence) seq.getObjectAt(1);
+            
+            ASN1Encodable content = ASN1Sequence.getInstance(signature.getSignedContent().getContent());
+            PKCS7ProcessableObject obj = new PKCS7ProcessableObject(signature.getSignedContent().getContentType(), content);
+            DLSequence seq = (DLSequence) obj.getContent();
+            DLSequence seq1 = (DLSequence) seq.getObjectAt(1);
             DEROctetString seq2 = (DEROctetString) seq1.getObjectAt(1);
-
             // This is the file hash as stored in the signer info of the EXE file.
             // We will verify this later by computing the actual hash of the file and making sure
             // it is still the same.
-            storedFileHash = seq2.getOctets(); 
+            storedFileHash = seq2.getOctets();             
             logger.info("File hash stored in PKCS7 cert: " + String.valueOf(convertBytesToHex(storedFileHash)));
 
         } finally {

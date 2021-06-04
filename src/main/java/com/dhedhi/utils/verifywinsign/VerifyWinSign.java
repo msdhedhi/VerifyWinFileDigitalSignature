@@ -79,6 +79,7 @@ public class VerifyWinSign {
     // ------------------------------------------------------------------------------------------------
 	public boolean verify(String sFileName ) throws IOException, FileNotFoundException, CMSException, CertificateException, OperatorCreationException {
         
+	    logger.info( "Verifying file: " + sFileName );
 		WinFile winFile = new WinFile(sFileName);
 		winFile.setAnchorCheck( doAnchorCheck );
 		
