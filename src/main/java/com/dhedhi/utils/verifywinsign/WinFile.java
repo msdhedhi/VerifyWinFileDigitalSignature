@@ -428,7 +428,7 @@ public class WinFile {
                 sha1.update(cert.getIssuer().getEncoded());
                 String sIssuerHash = String.valueOf(convertBytesToHex(sha1.digest()));
                 if( caStoreHashMap.containsKey( sIssuerHash ) == false ) {
-                    throw new WindowsPEFileFormatException( "Certificate with isuser hash: " + sIssuerHash + " and subject: " + cert.getIssuer().toString() + " was not found in CA store.");
+                    throw new WindowsPEFileFormatException( "Certificate with issuer hash: " + sIssuerHash + " and subject: " + cert.getIssuer().toString() + " was not found in CA store.");
                 }
                 
                 X509Certificate trustAnchor = caStoreHashMap.get(sIssuerHash);
